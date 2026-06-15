@@ -37,6 +37,11 @@ const userSchema = new mongoose.Schema({
   },
   workExperience: { type: [workExperienceSchema], default: [] },
   education: { type: educationSchema, default: {} },
+  resume: {
+    name: { type: String, default: '' },
+    data: { type: String, default: '' }, // Base64 PDF data
+    contentType: { type: String, default: '' },
+  },
 
   // Company-specific fields
   verificationStatus: {
@@ -50,6 +55,7 @@ const userSchema = new mongoose.Schema({
     size: { type: String, default: '' },
     description: { type: String, default: '' },
     location: { type: String, default: '' },
+    upcomingHiring: { type: String, default: '' },
   },
 
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

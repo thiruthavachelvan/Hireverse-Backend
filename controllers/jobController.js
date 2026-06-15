@@ -1,4 +1,7 @@
 const Job = require('../models/Job');
+const User = require('../models/User');
+const Post = require('../models/Post');
+const Notification = require('../models/Notification');
 
 // @desc    Create a new job posting
 // @route   POST /api/jobs
@@ -9,7 +12,7 @@ const createJob = async (req, res) => {
       return res.status(403).json({ message: 'Only verified companies can post jobs' });
     }
 
-    const { jobTitle, description, requiredSkills, salary, location, jobType, rounds, applicationForm } = req.body;
+    const { jobTitle, description, requiredSkills, salary, location, jobType, rounds, applicationForm, shareToFeed } = req.body;
 
     if (!jobTitle || !description || !salary || !location) {
       return res.status(400).json({ message: 'Please provide all required fields' });
@@ -54,6 +57,36 @@ const createJob = async (req, res) => {
       applicationForm: formQuestions,
       applicants: [],
     });
+
+    // Share to feed and notify followers if requested
+    if (shareToFeed) {
+      try {
+        const company = await User.findById(req.user._id);
+
+        // 1. Create a feed post promoting the job
+        await Post.create({
+          userId: req.user._id,
+          content: `📢 We are hiring! We just posted a new job opening: "${jobTitle}".\n📍 Location: ${location}\n💰 Salary: ${salary}\n💼 Type: ${jobType || 'Full-time'}\n\nCheck it out and apply on our jobs page!`,
+          image: '',
+          likes: [],
+          comments: [],
+        });
+
+        // 2. Notify all followers of the company
+        if (company && company.followers && company.followers.length > 0) {
+          const notifications = company.followers.map(followerId => ({
+            recipientId: followerId,
+            type: 'job_posted',
+            title: `New Job Alert from ${company.name}!`,
+            message: `We are hiring for the role of "${jobTitle}" in ${location}. Apply now!`,
+            relatedJobId: job._id,
+          }));
+          await Notification.insertMany(notifications);
+        }
+      } catch (err) {
+        console.error('Failed to broadcast job to feed/followers:', err);
+      }
+    }
 
     res.status(201).json(job);
   } catch (error) {

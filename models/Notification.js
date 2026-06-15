@@ -15,6 +15,9 @@ const notificationSchema = new mongoose.Schema({
       'round_scheduled',        // candidate gets this (date/time set)
       'round_advanced',         // candidate gets this (moved to next round)
       'hired',                  // candidate gets this (final hire)
+      'job_posted',             // candidate gets this when followed company posts a job
+      'follow_request',         // candidate gets a follow request
+      'follow_accepted',        // candidate is notified that their request was accepted
     ],
     required: true,
   },

@@ -1,6 +1,8 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const FollowRequest = require('../models/FollowRequest');
+const Notification = require('../models/Notification');
 
 // Helper to generate token
 const generateToken = (id) => {
@@ -26,6 +28,7 @@ const buildUserResponse = (user, token) => ({
   employmentStatus: user.employmentStatus,
   workExperience: user.workExperience,
   education: user.education,
+  resume: user.resume,
   ...(token && { token }),
 });
 
@@ -161,6 +164,9 @@ const updateUserProfile = async (req, res) => {
       user.employmentStatus = req.body.employmentStatus !== undefined ? req.body.employmentStatus : user.employmentStatus;
       user.workExperience = req.body.workExperience !== undefined ? req.body.workExperience : user.workExperience;
       user.education = req.body.education !== undefined ? req.body.education : user.education;
+      if (req.body.resume !== undefined) {
+        user.resume = req.body.resume;
+      }
     }
 
     const updatedUser = await user.save();
@@ -190,6 +196,42 @@ const followUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // If both are professionals, treat follow as a connection request
+    if (targetUser.accountType === 'professional' && currentUser.accountType === 'professional') {
+      if (currentUser.following.includes(targetUserId)) {
+        return res.status(400).json({ message: 'Already connected with this user' });
+      }
+
+      // Check if there is already a pending connection request
+      const existingRequest = await FollowRequest.findOne({
+        senderId: currentUserId,
+        receiverId: targetUserId,
+        status: 'pending',
+      });
+
+      if (existingRequest) {
+        return res.status(400).json({ message: 'Connection request already sent and pending' });
+      }
+
+      // Create a pending connection request
+      await FollowRequest.create({
+        senderId: currentUserId,
+        receiverId: targetUserId,
+        status: 'pending',
+      });
+
+      // Notify the receiver
+      await Notification.create({
+        recipientId: targetUserId,
+        type: 'follow_request',
+        title: 'New Connection Request',
+        message: `${currentUser.name} wants to connect with you.`,
+      });
+
+      return res.json({ message: 'Connection request sent successfully', requestPending: true });
+    }
+
+    // Otherwise, follow immediately (e.g. professional following a company)
     if (currentUser.following.includes(targetUserId)) {
       return res.status(400).json({ message: 'Already following this user' });
     }
@@ -222,21 +264,128 @@ const unfollowUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if (!currentUser.following.includes(targetUserId)) {
-      return res.status(400).json({ message: 'You are not following this user' });
-    }
+    // Mutual disconnection for professionals
+    if (currentUser.accountType === 'professional' && targetUser.accountType === 'professional') {
+      currentUser.following = currentUser.following.filter(id => id.toString() !== targetUserId);
+      currentUser.followers = currentUser.followers.filter(id => id.toString() !== targetUserId);
+      targetUser.following = targetUser.following.filter(id => id.toString() !== currentUserId.toString());
+      targetUser.followers = targetUser.followers.filter(id => id.toString() !== currentUserId.toString());
 
-    currentUser.following = currentUser.following.filter(
-      (id) => id.toString() !== targetUserId
-    );
-    targetUser.followers = targetUser.followers.filter(
-      (id) => id.toString() !== currentUserId.toString()
-    );
+      // Delete the follow request
+      await FollowRequest.deleteMany({
+        $or: [
+          { senderId: currentUserId, receiverId: targetUserId },
+          { senderId: targetUserId, receiverId: currentUserId }
+        ]
+      });
+    } else {
+      // Standard unfollow (e.g. unfollowing a company)
+      if (!currentUser.following.includes(targetUserId)) {
+        return res.status(400).json({ message: 'You are not following this user' });
+      }
+      currentUser.following = currentUser.following.filter(
+        (id) => id.toString() !== targetUserId
+      );
+      targetUser.followers = targetUser.followers.filter(
+        (id) => id.toString() !== currentUserId.toString()
+      );
+    }
 
     await currentUser.save();
     await targetUser.save();
 
-    res.json({ message: 'Successfully unfollowed user', following: currentUser.following });
+    res.json({ message: 'Successfully disconnected/unfollowed', following: currentUser.following });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get pending follow/connection requests
+// @route   GET /api/auth/follow-requests
+// @access  Private
+const getFollowRequests = async (req, res) => {
+  try {
+    const requests = await FollowRequest.find({
+      receiverId: req.user._id,
+      status: 'pending',
+    }).populate('senderId', 'name email headline profileImage');
+
+    res.json(requests);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Accept follow/connection request
+// @route   PUT /api/auth/follow-request/:id/accept
+// @access  Private
+const acceptFollowRequest = async (req, res) => {
+  try {
+    const requestId = req.params.id;
+    const request = await FollowRequest.findById(requestId);
+
+    if (!request) {
+      return res.status(404).json({ message: 'Request not found' });
+    }
+
+    if (request.receiverId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    request.status = 'accepted';
+    await request.save();
+
+    const sender = await User.findById(request.senderId);
+    const receiver = await User.findById(request.receiverId);
+
+    if (sender && receiver) {
+      // Add to both follow lists for mutual connection
+      if (!sender.following.includes(receiver._id)) sender.following.push(receiver._id);
+      if (!receiver.followers.includes(sender._id)) receiver.followers.push(sender._id);
+      if (!receiver.following.includes(sender._id)) receiver.following.push(sender._id);
+      if (!sender.followers.includes(receiver._id)) sender.followers.push(receiver._id);
+
+      await sender.save();
+      await receiver.save();
+
+      // Create notification for sender
+      await Notification.create({
+        recipientId: sender._id,
+        type: 'follow_accepted',
+        title: 'Connection Request Accepted',
+        message: `${receiver.name} accepted your connection request. You are now connected!`,
+      });
+    }
+
+    res.json({ message: 'Connection request accepted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Reject follow/connection request
+// @route   PUT /api/auth/follow-request/:id/reject
+// @access  Private
+const rejectFollowRequest = async (req, res) => {
+  try {
+    const requestId = req.params.id;
+    const request = await FollowRequest.findById(requestId);
+
+    if (!request) {
+      return res.status(404).json({ message: 'Request not found' });
+    }
+
+    if (request.receiverId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    request.status = 'rejected';
+    await request.save();
+
+    res.json({ message: 'Connection request rejected successfully' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -265,4 +414,7 @@ module.exports = {
   followUser,
   unfollowUser,
   getAllUsers,
+  getFollowRequests,
+  acceptFollowRequest,
+  rejectFollowRequest,
 };

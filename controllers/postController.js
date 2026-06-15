@@ -115,9 +115,27 @@ const commentOnPost = async (req, res) => {
   }
 };
 
+// @desc    Get posts created by a specific user
+// @route   GET /api/posts/user/:userId
+// @access  Private
+const getUserPosts = async (req, res) => {
+  try {
+    const posts = await Post.find({ userId: req.params.userId })
+      .populate('userId', 'name headline profileImage accountType')
+      .populate('comments.userId', 'name headline profileImage')
+      .sort({ createdAt: -1 });
+
+    res.json(posts);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   createPost,
   getAllPosts,
   likePost,
   commentOnPost,
+  getUserPosts,
 };
