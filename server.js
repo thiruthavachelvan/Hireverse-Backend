@@ -19,6 +19,7 @@ app.use('/api/jobs', require('./routes/jobRoutes'));
 app.use('/api/applications', require('./routes/applicationRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/assessments', require('./routes/assessmentRoutes'));
 
 // Welcome Route
 app.get('/', (req, res) => {
