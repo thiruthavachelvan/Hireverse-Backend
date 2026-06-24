@@ -11,6 +11,19 @@ const roundScheduleSchema = new mongoose.Schema({
   scheduledAt: { type: Date },
   venue: { type: String, default: '' },
   notes: { type: String, default: '' },
+  hasAssessment: { type: Boolean, default: false },
+  assessmentDetails: {
+    assessmentType: { type: String, enum: ['Aptitude MCQ', 'Technical MCQ', 'Coding Round'] },
+    numQuestions: { type: Number },
+    difficulty: {
+      easy: { type: Number, default: 40 },
+      medium: { type: Number, default: 40 },
+      hard: { type: Number, default: 20 },
+    },
+    duration: { type: Number },
+    startTime: { type: String },
+    endTime: { type: String },
+  },
 }, { _id: false });
 
 const applicationSchema = new mongoose.Schema({

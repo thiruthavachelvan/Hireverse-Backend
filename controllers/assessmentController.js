@@ -2,7 +2,7 @@ const CandidateAssessment = require('../models/CandidateAssessment');
 const QuestionBank = require('../models/QuestionBank');
 const AssessmentResult = require('../models/AssessmentResult');
 const ProctorReport = require('../models/ProctorReport');
-const Job = require('../models/Job');
+const Application = require('../models/Application');
 
 const getOrGenerateAssessment = async (req, res) => {
   try {
@@ -12,29 +12,49 @@ const getOrGenerateAssessment = async (req, res) => {
     // Check if assessment already generated
     let assessment = await CandidateAssessment.findOne({ candidateId, jobId, roundNumber }).populate('questions');
     if (assessment) {
-      // If it is already completed, you might not want to return questions, but for now we do.
       return res.status(200).json(assessment);
     }
 
-    // Get the job and round details
-    const job = await Job.findById(jobId);
-    if (!job) return res.status(404).json({ message: 'Job not found' });
-    const round = job.rounds.find((r) => r.roundNumber === parseInt(roundNumber));
-    if (!round || !round.hasAssessment || !round.assessmentDetails) {
-      return res.status(400).json({ message: 'Assessment not found for this round' });
+    // Get the candidate's application to read assessment config from the roundSchedule
+    const application = await Application.findOne({ jobId, applicantId: candidateId });
+    if (!application) return res.status(404).json({ message: 'Application not found' });
+
+    const roundSchedule = application.roundSchedules.find(
+      (rs) => rs.roundNumber === parseInt(roundNumber)
+    );
+
+    if (!roundSchedule || !roundSchedule.hasAssessment || !roundSchedule.assessmentDetails) {
+      return res.status(400).json({ message: 'No assessment has been configured for this round' });
     }
 
-    const { type, numQuestions, difficulty, duration } = round.assessmentDetails;
+    const { assessmentType, numQuestions, difficulty, duration } = roundSchedule.assessmentDetails;
 
-    // Based on type, decide category
+    // Validate assessment window
+    const now = new Date();
+    if (roundSchedule.assessmentDetails.startTime) {
+      const start = new Date(roundSchedule.assessmentDetails.startTime);
+      if (now < start) {
+        return res.status(400).json({ message: `Assessment is not yet available. It opens at ${start.toLocaleString('en-IN')}` });
+      }
+    }
+    if (roundSchedule.assessmentDetails.endTime) {
+      const end = new Date(roundSchedule.assessmentDetails.endTime);
+      if (now > end) {
+        return res.status(400).json({ message: 'The assessment window has closed.' });
+      }
+    }
+
+    // Map type to category
     let category;
-    if (type === 'Aptitude MCQ') category = 'Aptitude';
-    else if (type === 'Technical MCQ') category = 'Technical';
-    else if (type === 'Coding Round') category = 'Coding';
+    if (assessmentType === 'Aptitude MCQ') category = 'Aptitude';
+    else if (assessmentType === 'Technical MCQ') category = 'Technical';
+    else if (assessmentType === 'Coding Round') category = 'Coding';
+    else category = 'Aptitude';
 
-    const easyCount = Math.floor((difficulty.easy / 100) * numQuestions);
-    const hardCount = Math.floor((difficulty.hard / 100) * numQuestions);
-    const mediumCount = numQuestions - easyCount - hardCount;
+    const totalQ = numQuestions || 10;
+    const easyCount = Math.floor(((difficulty?.easy || 40) / 100) * totalQ);
+    const hardCount = Math.floor(((difficulty?.hard || 20) / 100) * totalQ);
+    const mediumCount = totalQ - easyCount - hardCount;
 
     // Aggregate sample questions
     const [easyQs, mediumQs, hardQs] = await Promise.all([
@@ -44,8 +64,6 @@ const getOrGenerateAssessment = async (req, res) => {
     ]);
 
     let finalQuestions = [...easyQs, ...mediumQs, ...hardQs].map(q => q._id);
-    
-    // Shuffle the final questions
     finalQuestions = finalQuestions.sort(() => Math.random() - 0.5);
 
     assessment = await CandidateAssessment.create({
@@ -53,7 +71,7 @@ const getOrGenerateAssessment = async (req, res) => {
       jobId,
       roundNumber,
       questions: finalQuestions,
-      duration,
+      duration: duration || 45,
       startTime: Date.now(),
       status: 'Pending',
     });

@@ -166,7 +166,7 @@ const rejectApplication = async (req, res) => {
 // @access  Private (Company only)
 const scheduleRound = async (req, res) => {
   try {
-    const { roundNumber, scheduledAt, venue, notes } = req.body;
+    const { roundNumber, scheduledAt, venue, notes, hasAssessment, assessmentDetails } = req.body;
 
     if (!roundNumber || !scheduledAt) {
       return res.status(400).json({ message: 'Round number and scheduled date are required' });
@@ -193,6 +193,8 @@ const scheduleRound = async (req, res) => {
       scheduledAt: new Date(scheduledAt),
       venue: venue || '',
       notes: notes || '',
+      hasAssessment: hasAssessment || false,
+      assessmentDetails: hasAssessment && assessmentDetails ? assessmentDetails : undefined,
     };
 
     if (existingIdx >= 0) {
@@ -207,11 +209,15 @@ const scheduleRound = async (req, res) => {
       dateStyle: 'full', timeStyle: 'short',
     });
 
+    const assessmentNote = hasAssessment
+      ? ` This round includes an online assessment (${assessmentDetails?.assessmentType || 'MCQ'}, ${assessmentDetails?.duration || 45} mins).`
+      : '';
+
     await createNotification({
       recipientId: application.applicantId._id,
       type: 'round_scheduled',
       title: `📅 ${roundName} Scheduled`,
-      message: `Your ${roundName} for "${job.jobTitle}" at ${job.companyId.name} is scheduled on ${formattedDate}${venue ? ` at ${venue}` : ''}.${notes ? ` Note: ${notes}` : ''}`,
+      message: `Your ${roundName} for "${job.jobTitle}" at ${job.companyId.name} is scheduled on ${formattedDate}${venue ? ` at ${venue}` : ''}.${notes ? ` Note: ${notes}` : ''}${assessmentNote}`,
       relatedJobId: job._id,
       relatedApplicationId: application._id,
       roundNumber,
