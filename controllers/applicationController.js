@@ -161,15 +161,21 @@ const rejectApplication = async (req, res) => {
   }
 };
 
-// @desc    Schedule a round (set date/time/venue)
+// @desc    Schedule a round (assessment OR interview)
 // @route   PUT /api/applications/:id/schedule-round
 // @access  Private (Company only)
 const scheduleRound = async (req, res) => {
   try {
-    const { roundNumber, scheduledAt, venue, notes, hasAssessment, assessmentDetails } = req.body;
+    const { roundNumber, roundType, assessmentConfig, interviewConfig } = req.body;
 
-    if (!roundNumber || !scheduledAt) {
-      return res.status(400).json({ message: 'Round number and scheduled date are required' });
+    if (!roundNumber) {
+      return res.status(400).json({ message: 'Round number is required' });
+    }
+    if (roundType === 'interview' && !interviewConfig?.scheduledAt) {
+      return res.status(400).json({ message: 'Interview date and time is required' });
+    }
+    if (roundType === 'assessment' && (!assessmentConfig?.availableFrom || !assessmentConfig?.availableUntil)) {
+      return res.status(400).json({ message: 'Assessment availability window (From & Until) is required' });
     }
 
     const application = await Application.findById(req.params.id)
@@ -185,43 +191,58 @@ const scheduleRound = async (req, res) => {
     const roundInfo = job.rounds.find(r => r.roundNumber === roundNumber);
     const roundName = roundInfo ? roundInfo.name : `Round ${roundNumber}`;
 
-    // Update or add schedule for this round
-    const existingIdx = application.roundSchedules.findIndex(rs => rs.roundNumber === roundNumber);
+    const type = roundType || 'interview';
+
     const scheduleEntry = {
       roundNumber,
       roundName,
-      scheduledAt: new Date(scheduledAt),
-      venue: venue || '',
-      notes: notes || '',
-      hasAssessment: hasAssessment || false,
-      assessmentDetails: hasAssessment && assessmentDetails ? assessmentDetails : undefined,
+      roundType: type,
+      assessmentConfig: type === 'assessment' ? {
+        assessmentType: assessmentConfig.assessmentType,
+        numQuestions:   assessmentConfig.numQuestions,
+        difficulty: {
+          easy:   assessmentConfig.difficulty?.easy   ?? 40,
+          medium: assessmentConfig.difficulty?.medium ?? 40,
+          hard:   assessmentConfig.difficulty?.hard   ?? 20,
+        },
+        duration:       assessmentConfig.duration,
+        availableFrom:  assessmentConfig.availableFrom,
+        availableUntil: assessmentConfig.availableUntil,
+      } : undefined,
+      interviewConfig: type === 'interview' ? {
+        scheduledAt:  new Date(interviewConfig.scheduledAt),
+        meetingLink:  interviewConfig.meetingLink || '',
+        notes:        interviewConfig.notes       || '',
+      } : undefined,
     };
 
+    const existingIdx = application.roundSchedules.findIndex(rs => rs.roundNumber === roundNumber);
     if (existingIdx >= 0) {
       application.roundSchedules[existingIdx] = scheduleEntry;
     } else {
       application.roundSchedules.push(scheduleEntry);
     }
-
     await application.save();
 
-    const formattedDate = new Date(scheduledAt).toLocaleString('en-IN', {
-      dateStyle: 'full', timeStyle: 'short',
-    });
-
-    const assessmentNote = hasAssessment
-      ? ` This round includes an online assessment (${assessmentDetails?.assessmentType || 'MCQ'}, ${assessmentDetails?.duration || 45} mins).`
-      : '';
+    // Build notification message
+    let notifMessage;
+    if (type === 'assessment') {
+      const from = new Date(assessmentConfig.availableFrom).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+      const until = new Date(assessmentConfig.availableUntil).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+      notifMessage = `Your ${roundName} for "${job.jobTitle}" at ${job.companyId.name} is an online assessment (${assessmentConfig.assessmentType}, ${assessmentConfig.duration} mins). Available: ${from} – ${until}. Open the Interviews tab to attempt it.`;
+    } else {
+      const formattedDate = new Date(interviewConfig.scheduledAt).toLocaleString('en-IN', { dateStyle: 'full', timeStyle: 'short' });
+      notifMessage = `Your ${roundName} for "${job.jobTitle}" at ${job.companyId.name} is scheduled on ${formattedDate}${interviewConfig.meetingLink ? ` — Join: ${interviewConfig.meetingLink}` : ''}.${interviewConfig.notes ? ` Note: ${interviewConfig.notes}` : ''}`;
+    }
 
     await createNotification({
       recipientId: application.applicantId._id,
       type: 'round_scheduled',
       title: `📅 ${roundName} Scheduled`,
-      message: `Your ${roundName} for "${job.jobTitle}" at ${job.companyId.name} is scheduled on ${formattedDate}${venue ? ` at ${venue}` : ''}.${notes ? ` Note: ${notes}` : ''}${assessmentNote}`,
+      message: notifMessage,
       relatedJobId: job._id,
       relatedApplicationId: application._id,
       roundNumber,
-      scheduledAt: new Date(scheduledAt),
     });
 
     res.json({ message: 'Round scheduled successfully', application });

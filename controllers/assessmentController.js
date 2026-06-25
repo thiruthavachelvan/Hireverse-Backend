@@ -9,13 +9,13 @@ const getOrGenerateAssessment = async (req, res) => {
     const { jobId, roundNumber } = req.params;
     const candidateId = req.user.id;
 
-    // Check if assessment already generated
+    // Return existing generated assessment if already created
     let assessment = await CandidateAssessment.findOne({ candidateId, jobId, roundNumber }).populate('questions');
     if (assessment) {
       return res.status(200).json(assessment);
     }
 
-    // Get the candidate's application to read assessment config from the roundSchedule
+    // Get candidate's application → find the roundSchedule entry
     const application = await Application.findOne({ jobId, applicantId: candidateId });
     if (!application) return res.status(404).json({ message: 'Application not found' });
 
@@ -23,55 +23,66 @@ const getOrGenerateAssessment = async (req, res) => {
       (rs) => rs.roundNumber === parseInt(roundNumber)
     );
 
-    if (!roundSchedule || !roundSchedule.hasAssessment || !roundSchedule.assessmentDetails) {
-      return res.status(400).json({ message: 'No assessment has been configured for this round' });
+    if (!roundSchedule || roundSchedule.roundType !== 'assessment') {
+      return res.status(400).json({ message: 'No online assessment has been configured for this round' });
     }
 
-    const { assessmentType, numQuestions, difficulty, duration } = roundSchedule.assessmentDetails;
+    // Support both new (assessmentConfig) and old (assessmentDetails) schema
+    const cfg = roundSchedule.assessmentConfig || roundSchedule.assessmentDetails;
+    if (!cfg) {
+      return res.status(400).json({ message: 'Assessment configuration is missing' });
+    }
 
-    // Validate assessment window
+    const assessmentType = cfg.assessmentType || cfg.type;
+    const numQuestions   = cfg.numQuestions || 10;
+    const difficulty     = cfg.difficulty || { easy: 40, medium: 40, hard: 20 };
+    const duration       = cfg.duration || 45;
+    const availableFrom  = cfg.availableFrom  || cfg.startTime;
+    const availableUntil = cfg.availableUntil || cfg.endTime;
+
+    // Validate availability window
     const now = new Date();
-    if (roundSchedule.assessmentDetails.startTime) {
-      const start = new Date(roundSchedule.assessmentDetails.startTime);
+    if (availableFrom) {
+      const start = new Date(availableFrom);
       if (now < start) {
-        return res.status(400).json({ message: `Assessment is not yet available. It opens at ${start.toLocaleString('en-IN')}` });
+        return res.status(400).json({
+          message: `Assessment is not yet available. It opens at ${start.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`
+        });
       }
     }
-    if (roundSchedule.assessmentDetails.endTime) {
-      const end = new Date(roundSchedule.assessmentDetails.endTime);
+    if (availableUntil) {
+      const end = new Date(availableUntil);
       if (now > end) {
         return res.status(400).json({ message: 'The assessment window has closed.' });
       }
     }
 
-    // Map type to category
-    let category;
-    if (assessmentType === 'Aptitude MCQ') category = 'Aptitude';
-    else if (assessmentType === 'Technical MCQ') category = 'Technical';
+    // Map type → QuestionBank category
+    let category = 'Aptitude';
+    if (assessmentType === 'Technical MCQ') category = 'Technical';
     else if (assessmentType === 'Coding Round') category = 'Coding';
-    else category = 'Aptitude';
 
-    const totalQ = numQuestions || 10;
-    const easyCount = Math.floor(((difficulty?.easy || 40) / 100) * totalQ);
-    const hardCount = Math.floor(((difficulty?.hard || 20) / 100) * totalQ);
+    const totalQ      = numQuestions;
+    const easyCount   = Math.floor(((difficulty.easy   ?? 40) / 100) * totalQ);
+    const hardCount   = Math.floor(((difficulty.hard   ?? 20) / 100) * totalQ);
     const mediumCount = totalQ - easyCount - hardCount;
 
-    // Aggregate sample questions
     const [easyQs, mediumQs, hardQs] = await Promise.all([
-      QuestionBank.aggregate([{ $match: { category, difficulty: 'Easy' } }, { $sample: { size: easyCount } }]),
+      QuestionBank.aggregate([{ $match: { category, difficulty: 'Easy'   } }, { $sample: { size: easyCount   } }]),
       QuestionBank.aggregate([{ $match: { category, difficulty: 'Medium' } }, { $sample: { size: mediumCount } }]),
-      QuestionBank.aggregate([{ $match: { category, difficulty: 'Hard' } }, { $sample: { size: hardCount } }]),
+      QuestionBank.aggregate([{ $match: { category, difficulty: 'Hard'   } }, { $sample: { size: hardCount   } }]),
     ]);
 
-    let finalQuestions = [...easyQs, ...mediumQs, ...hardQs].map(q => q._id);
-    finalQuestions = finalQuestions.sort(() => Math.random() - 0.5);
+    let finalQuestions = [...easyQs, ...mediumQs, ...hardQs]
+      .map(q => q._id)
+      .sort(() => Math.random() - 0.5);
 
     assessment = await CandidateAssessment.create({
       candidateId,
       jobId,
       roundNumber,
       questions: finalQuestions,
-      duration: duration || 45,
+      duration,
       startTime: Date.now(),
       status: 'Pending',
     });
