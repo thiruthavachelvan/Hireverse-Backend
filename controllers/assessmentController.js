@@ -3,6 +3,8 @@ const QuestionBank = require('../models/QuestionBank');
 const AssessmentResult = require('../models/AssessmentResult');
 const ProctorReport = require('../models/ProctorReport');
 const Application = require('../models/Application');
+const AssessmentAttempt = require('../models/AssessmentAttempt');
+const Job = require('../models/Job');
 
 const getOrGenerateAssessment = async (req, res) => {
   try {
@@ -110,53 +112,110 @@ const submitAssessment = async (req, res) => {
     const timeTakenMins = Math.round(timeTakenMs / 60000);
 
     // Evaluate
-    let score = 0;
+    let correctAnswers = 0;
+    let wrongAnswers = 0;
     const totalQuestions = assessment.questions.length;
     
     assessment.questions.forEach(q => {
+      const candidateAns = answers[q._id];
       if (q.type === 'MCQ') {
-        if (answers[q._id] === q.correctAnswer) score += 1;
+        if (candidateAns === q.correctAnswer) {
+          correctAnswers += 1;
+        } else {
+          wrongAnswers += 1;
+        }
       } else {
         // Coding auto-evaluation simplified for now: 1 point if answered at all (usually requires code execution)
-        if (answers[q._id] && answers[q._id].trim().length > 10) score += 1; 
+        if (candidateAns && candidateAns.trim().length > 10) {
+          correctAnswers += 1;
+        } else {
+          wrongAnswers += 1;
+        }
       }
     });
 
-    const percentage = Math.round((score / totalQuestions) * 100);
+    const percentage = Math.round((correctAnswers / totalQuestions) * 100);
     const passed = percentage >= 50; // simple threshold
 
-    // Create Result
-    const result = await AssessmentResult.create({
-      candidateId,
-      assessmentId,
-      score,
-      percentage,
-      timeTaken: timeTakenMins,
-      status: passed ? 'Passed' : 'Failed'
-    });
-
-    // Create Proctor Report
+    // Calculate proctoring trust score in backend
     let trustScore = 100;
     trustScore -= (proctorData.tabSwitchCount || 0) * 10;
     trustScore -= (proctorData.fullscreenExitCount || 0) * 10;
     trustScore -= (proctorData.copyPasteAttempts || 0) * 5;
+    trustScore -= (proctorData.rightClickAttempts || 0) * 5;
     if (trustScore < 0) trustScore = 0;
 
-    await ProctorReport.create({
+    // 1. Create Proctor Report
+    const proctorReport = await ProctorReport.create({
       candidateId,
       assessmentId,
       tabSwitchCount: proctorData.tabSwitchCount || 0,
       fullscreenExitCount: proctorData.fullscreenExitCount || 0,
       copyPasteAttempts: proctorData.copyPasteAttempts || 0,
+      rightClickAttempts: proctorData.rightClickAttempts || 0,
+      totalTimeOutsideSecureMode: proctorData.totalTimeOutsideSecureMode || 0,
       violations: proctorData.violations || [],
       trustScore
     });
 
-    // Mark as completed
+    // 2. Query Job to get companyId
+    const job = await Job.findById(assessment.jobId);
+    const companyId = job?.companyId || candidateId; // Fallback if job not found
+
+    // 3. Create Assessment Attempt
+    const attempt = await AssessmentAttempt.create({
+      candidateId,
+      assessmentId,
+      jobId: assessment.jobId,
+      companyId,
+      answers,
+      totalQuestions,
+      correctAnswers,
+      wrongAnswers,
+      score: correctAnswers,
+      percentage,
+      timeTaken: timeTakenMins,
+      submittedAt: new Date(),
+      status: 'Completed',
+      proctorReportId: proctorReport._id
+    });
+
+    // Link attemptId back to Proctor Report
+    proctorReport.attemptId = attempt._id;
+    await proctorReport.save();
+
+    // 4. Create Result (backward compatibility)
+    await AssessmentResult.create({
+      candidateId,
+      assessmentId,
+      score: correctAnswers,
+      percentage,
+      timeTaken: timeTakenMins,
+      status: passed ? 'Passed' : 'Failed'
+    });
+
+    // 5. Update Application currentRound.status and roundSchedules status
+    const application = await Application.findOne({ jobId: assessment.jobId, applicantId: candidateId });
+    if (application) {
+      application.currentRoundStatus = 'Completed';
+      application.assessmentCompleted = true;
+      application.attemptId = attempt._id;
+      
+      const rsIndex = application.roundSchedules.findIndex(rs => rs.roundNumber === assessment.roundNumber);
+      if (rsIndex !== -1) {
+        application.roundSchedules[rsIndex].status = 'Completed';
+        application.roundSchedules[rsIndex].assessmentCompleted = true;
+        application.roundSchedules[rsIndex].attemptId = attempt._id;
+      }
+      await application.save();
+    }
+
+    // Mark CandidateAssessment as completed
     assessment.status = 'Completed';
     await assessment.save();
 
-    res.status(200).json({ message: 'Submitted successfully', result });
+    // Response does not return trust score or violations to the candidate
+    res.status(200).json({ message: 'Submitted successfully' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error submitting assessment' });
@@ -166,9 +225,31 @@ const submitAssessment = async (req, res) => {
 const getAssessmentReport = async (req, res) => {
   try {
     const { assessmentId } = req.params;
-    const result = await AssessmentResult.findOne({ assessmentId });
+    let attempt = await AssessmentAttempt.findOne({ assessmentId })
+      .populate('candidateId', 'name profileImage email headline')
+      .populate('assessmentId');
     const proctor = await ProctorReport.findOne({ assessmentId });
-    res.status(200).json({ result, proctor });
+
+    if (!attempt) {
+      // Fallback backwards compatibility
+      const result = await AssessmentResult.findOne({ assessmentId }).populate('candidateId', 'name profileImage email headline');
+      if (result) {
+        const assessment = await CandidateAssessment.findById(assessmentId);
+        attempt = {
+          candidateId: result.candidateId,
+          assessmentId: result.assessmentId,
+          totalQuestions: assessment?.questions?.length || 10,
+          correctAnswers: result.score,
+          wrongAnswers: Math.max(0, (assessment?.questions?.length || 10) - result.score),
+          score: result.score,
+          percentage: result.percentage,
+          timeTaken: result.timeTaken,
+          status: 'Completed',
+          submittedAt: result.createdAt
+        };
+      }
+    }
+    res.status(200).json({ attempt, proctor });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error fetching report' });
@@ -203,7 +284,20 @@ const getJobAssessmentResults = async (req, res) => {
         ...r.toObject(),
         proctorReport: proctor || null
       };
-    }).sort((a, b) => b.score - a.score); // Highest score first
+    }).sort((a, b) => {
+      // 1. Highest score percentage
+      if (b.percentage !== a.percentage) {
+        return b.percentage - a.percentage;
+      }
+      // 2. Highest trust score
+      const trustA = a.proctorReport?.trustScore ?? 100;
+      const trustB = b.proctorReport?.trustScore ?? 100;
+      if (trustB !== trustA) {
+        return trustB - trustA;
+      }
+      // 3. Lowest completion time
+      return a.timeTaken - b.timeTaken;
+    });
 
     res.status(200).json(leaderboard);
   } catch (error) {

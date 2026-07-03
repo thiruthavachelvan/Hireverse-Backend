@@ -11,6 +11,10 @@ const proctorReportSchema = new mongoose.Schema({
     ref: 'CandidateAssessment',
     required: true,
   },
+  attemptId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'AssessmentAttempt',
+  },
   tabSwitchCount: {
     type: Number,
     default: 0,
@@ -23,8 +27,16 @@ const proctorReportSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  rightClickAttempts: {
+    type: Number,
+    default: 0,
+  },
+  totalTimeOutsideSecureMode: {
+    type: Number, // in seconds
+    default: 0,
+  },
   violations: [{
-    type: String,
+    type: mongoose.Schema.Types.Mixed,
   }],
   trustScore: {
     type: Number,

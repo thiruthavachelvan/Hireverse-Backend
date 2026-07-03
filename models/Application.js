@@ -32,6 +32,9 @@ const roundScheduleSchema = new mongoose.Schema({
     meetingLink:  { type: String, default: '' },
     notes:        { type: String, default: '' },
   },
+  status: { type: String, enum: ['Scheduled', 'Completed'], default: 'Scheduled' },
+  assessmentCompleted: { type: Boolean, default: false },
+  attemptId: { type: mongoose.Schema.Types.ObjectId, ref: 'AssessmentAttempt' },
 }, { _id: false });
 
 const applicationSchema = new mongoose.Schema({
@@ -57,6 +60,18 @@ const applicationSchema = new mongoose.Schema({
   currentRound: {
     type: Number,
     default: 0,
+  },
+  currentRoundStatus: {
+    type: String,
+    default: 'Scheduled',
+  },
+  assessmentCompleted: {
+    type: Boolean,
+    default: false,
+  },
+  attemptId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'AssessmentAttempt',
   },
   roundSchedules: {
     type: [roundScheduleSchema],

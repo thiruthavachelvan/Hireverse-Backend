@@ -345,6 +345,10 @@ const getUserApplications = async (req, res) => {
           select: 'name profileImage email verificationStatus companyDetails',
         },
       })
+      .populate({
+        path: 'roundSchedules.attemptId',
+        select: 'submittedAt score percentage timeTaken status'
+      })
       .sort({ createdAt: -1 });
 
     res.json(applications);
@@ -370,6 +374,14 @@ const getJobApplicants = async (req, res) => {
 
     const applications = await Application.find({ jobId })
       .populate('applicantId', 'name headline bio skills profileImage email resume')
+      .populate({
+        path: 'roundSchedules.attemptId',
+        select: 'submittedAt score percentage timeTaken status proctorReportId',
+        populate: {
+          path: 'proctorReportId',
+          select: 'trustScore tabSwitchCount fullscreenExitCount copyPasteAttempts rightClickAttempts totalTimeOutsideSecureMode'
+        }
+      })
       .sort({ createdAt: -1 });
 
     res.json(applications);
