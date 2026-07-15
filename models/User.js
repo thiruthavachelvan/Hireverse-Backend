@@ -56,6 +56,13 @@ const userSchema = new mongoose.Schema({
     description: { type: String, default: '' },
     location: { type: String, default: '' },
     upcomingHiring: { type: String, default: '' },
+    startupStage: { type: String, default: '' },
+    foundedYear: { type: String, default: '' },
+    founders: { type: String, default: '' },
+    vision: { type: String, default: '' },
+    startupCulture: { type: String, default: '' },
+    officePhotos: { type: [String], default: [] },
+    videos: { type: [String], default: [] },
   },
 
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
