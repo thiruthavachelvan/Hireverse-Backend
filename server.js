@@ -20,6 +20,7 @@ app.use('/api/applications', require('./routes/applicationRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/assessments', require('./routes/assessmentRoutes'));
+app.use('/api/question-bank', require('./routes/questionBankRoutes'));
 
 // Welcome Route
 app.get('/', (req, res) => {
