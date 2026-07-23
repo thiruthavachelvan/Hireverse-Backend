@@ -150,7 +150,55 @@ const seed = async () => {
     profileImage: `https://api.dicebear.com/7.x/adventurer/svg?seed=Thiru&backgroundColor=transparent`
   });
 
-  const candidates = [mainCandidate];
+  const tushar = await User.create({
+    name: 'Tushar M',
+    email: 'tushar.demo@hireverse.com',
+    password: candidatePwd,
+    accountType: 'professional',
+    headline: 'Backend Engineer | Distributed Systems',
+    bio: 'Passionate about high-throughput microservices, Node.js, and database optimization.',
+    employmentStatus: 'unemployed',
+    skills: ['Node.js', 'Go', 'PostgreSQL', 'Docker', 'Redis', 'AWS'],
+    profileImage: `https://api.dicebear.com/7.x/adventurer/svg?seed=Tushar&backgroundColor=transparent`
+  });
+
+  const vairavan = await User.create({
+    name: 'Vairavan S',
+    email: 'vairavan.demo@hireverse.com',
+    password: candidatePwd,
+    accountType: 'professional',
+    headline: 'Full-Stack Developer | AI & SaaS Specialist',
+    bio: 'Building web applications with modern stacks and integrating AI-driven workflows.',
+    employmentStatus: 'unemployed',
+    skills: ['React', 'Python', 'FastAPI', 'MongoDB', 'TypeScript'],
+    profileImage: `https://api.dicebear.com/7.x/adventurer/svg?seed=Vairavan&backgroundColor=transparent`
+  });
+
+  const harriet = await User.create({
+    name: 'Harriet P',
+    email: 'harriet.demo@hireverse.com',
+    password: candidatePwd,
+    accountType: 'professional',
+    headline: 'UI/UX Engineer | Design Systems',
+    bio: 'Crafting responsive user interfaces, design tokens, and smooth micro-animations.',
+    employmentStatus: 'unemployed',
+    skills: ['React', 'Tailwind CSS', 'Figma', 'TypeScript', 'Framer Motion'],
+    profileImage: `https://api.dicebear.com/7.x/adventurer/svg?seed=Harriet&backgroundColor=transparent`
+  });
+
+  const pranav = await User.create({
+    name: 'Pranav R',
+    email: 'pranav.demo@hireverse.com',
+    password: candidatePwd,
+    accountType: 'professional',
+    headline: 'DevOps & Cloud Engineer | Infrastructure',
+    bio: 'Automating deployment pipelines, Kubernetes orchestration, and cloud architecture.',
+    employmentStatus: 'unemployed',
+    skills: ['Kubernetes', 'Docker', 'AWS', 'Terraform', 'CI/CD'],
+    profileImage: `https://api.dicebear.com/7.x/adventurer/svg?seed=Pranav&backgroundColor=transparent`
+  });
+
+  const candidates = [mainCandidate, tushar, vairavan, harriet, pranav];
 
   for (let i = 1; i <= 101; i++) {
     const fName = firstNames[i % firstNames.length];
