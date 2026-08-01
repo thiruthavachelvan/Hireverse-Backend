@@ -5,7 +5,17 @@ const roundSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   hasAssessment: { type: Boolean, default: false },
   assessmentDetails: {
-    type: { type: String, enum: ['Aptitude MCQ', 'Technical MCQ', 'Coding Round'] },
+    type: {
+      type: String,
+      enum: [
+        'Aptitude MCQ', 'Technical MCQ', 'Coding Round',
+        'Debugging', 'Frontend', 'Backend', 'Database Design',
+        'System Design', 'Product Thinking', 'Founder Challenge',
+        'UI/UX Design', 'QA Testing', 'AI/ML', 'Cybersecurity',
+        'DevOps', 'Culture Fit', 'Behavioral', 'HR Interview',
+        'Resume Screening', 'Assignment', 'Case Study',
+      ],
+    },
     numQuestions: { type: Number },
     difficulty: {
       easy: { type: Number, default: 40 },
