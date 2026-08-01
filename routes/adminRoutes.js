@@ -23,7 +23,7 @@ router.post('/seed-test-data', async (req, res) => {
     res.json({ message: 'Test data seeded successfully', results });
   } catch (err) {
     console.error('Seed error:', err);
-    res.status(500).json({ message: err.message || 'Seed failed' });
+    res.status(500).json({ message: err.message || 'Seed failed', stack: err.stack });
   }
 });
 
