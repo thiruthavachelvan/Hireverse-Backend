@@ -1,211 +1,210 @@
 // seedTestData.js
-// Run with: node seedTestData.js (from inside server/ directory)
-// OR triggered via POST /api/admin/seed-test-data (admin only)
+// Creates one job per company, each with a SINGLE round of a different type.
+// All rounds are set as currentRound=1 so they're immediately startable.
+// Run: node seedTestData.js   OR   POST /api/admin/seed-test-data
 
 const mongoose = require('mongoose');
 const bcrypt   = require('bcryptjs');
-
 const User        = require('./models/User');
 const Job         = require('./models/Job');
 const Application = require('./models/Application');
 
-// ─── Round type → valid assessmentType enum values ───────────────────────────
-const ROUND_TYPES = {
-  'Aptitude MCQ':     'Aptitude MCQ',
-  'Technical MCQ':    'Technical MCQ',
-  'Coding Round':     'Coding Round',
-  'Debugging':        'Debugging',
-  'Frontend':         'Frontend',
-  'Backend':          'Backend',
-  'Database Design':  'Database Design',
-  'System Design':    'System Design',
-  'Product Thinking': 'Product Thinking',
-  'Founder Challenge':'Founder Challenge',
-  'UI/UX Design':     'UI/UX Design',
-  'QA Testing':       'QA Testing',
-  'AI/ML':            'AI/ML',
-  'Cybersecurity':    'Cybersecurity',
-  'DevOps':           'DevOps',
-  'Culture Fit':      'Culture Fit',
-  'Behavioral':       'Behavioral',
-  'HR Interview':     'HR Interview',
-  'Resume Screening': 'Resume Screening',
-  'Assignment':       'Assignment',
-  'Case Study':       'Case Study',
-};
-
-// ─── Companies & Jobs definition ─────────────────────────────────────────────
+// ─── One entry per company → one job → one round type ────────────────────────
 const SEED_DATA = [
   {
-    company: {
-      name: 'AlphaTech',
-      email: 'contact@alphatech.io',
-      industry: 'SaaS',
-      location: 'Bangalore, India',
-    },
-    job: {
-      jobTitle: 'Full-Stack Engineer',
-      description: 'Build and scale modern full-stack web applications using React and Node.js.',
-      requiredSkills: ['React', 'Node.js', 'MongoDB', 'REST APIs'],
-      salary: '₹12-15 LPA',
-      location: 'Remote',
-      jobType: 'Full-time',
-    },
-    rounds: [
-      { num: 1, name: 'Aptitude Test',    type: 'Aptitude MCQ',   questions: 20, duration: 30,  difficulty: { easy: 60, medium: 30, hard: 10 } },
-      { num: 2, name: 'Coding Challenge', type: 'Coding Round',   questions: 3,  duration: 90,  difficulty: { easy: 0,  medium: 70, hard: 30 } },
-      { num: 3, name: 'Culture Fit',      type: 'Culture Fit',    questions: 5,  duration: 15,  difficulty: { easy: 100,medium: 0,  hard: 0  } },
-    ],
+    company: { name: 'AlphaTech',       email: 'contact@alphatech.io',    industry: 'SaaS',          location: 'Bangalore, India' },
+    jobTitle: 'Frontend Developer',
+    description: 'Build pixel-perfect UI components in React.',
+    skills: ['React', 'CSS', 'TypeScript'],
+    salary: '₹10-14 LPA', location: 'Remote', jobType: 'Full-time',
+    round: { num: 1, name: 'Aptitude Test',    type: 'Aptitude MCQ',    questions: 15, duration: 30,  difficulty: { easy: 60, medium: 30, hard: 10 } },
   },
   {
-    company: {
-      name: 'BetaLabs',
-      email: 'hr@betalabs.co',
-      industry: 'FinTech',
-      location: 'Delhi, India',
-    },
-    job: {
-      jobTitle: 'Data Analyst',
-      description: 'Analyse data pipelines and build dashboards to drive product decisions.',
-      requiredSkills: ['SQL', 'Python', 'Tableau', 'Statistics'],
-      salary: '₹8-10 LPA',
-      location: 'Bengaluru',
-      jobType: 'Full-time',
-    },
-    rounds: [
-      { num: 1, name: 'Technical MCQ',   type: 'Technical MCQ',  questions: 25, duration: 35, difficulty: { easy: 50, medium: 40, hard: 10 } },
-      { num: 2, name: 'Debugging Round', type: 'Debugging',       questions: 3,  duration: 45, difficulty: { easy: 30, medium: 50, hard: 20 } },
-      { num: 3, name: 'Behavioral',      type: 'Behavioral',      questions: 5,  duration: 20, difficulty: { easy: 100,medium: 0,  hard: 0  } },
-    ],
+    company: { name: 'BetaLabs',        email: 'hr@betalabs.co',          industry: 'FinTech',       location: 'Delhi, India' },
+    jobTitle: 'Backend Engineer',
+    description: 'Design scalable APIs and microservices.',
+    skills: ['Node.js', 'PostgreSQL', 'Docker'],
+    salary: '₹12-16 LPA', location: 'Hyderabad', jobType: 'Full-time',
+    round: { num: 1, name: 'Technical MCQ',    type: 'Technical MCQ',   questions: 20, duration: 35,  difficulty: { easy: 40, medium: 50, hard: 10 } },
   },
   {
-    company: {
-      name: 'GammaWorks AI',
-      email: 'jobs@gammaworks.ai',
-      industry: 'AI/ML',
-      location: 'Hyderabad, India',
-    },
-    job: {
-      jobTitle: 'AI Research Engineer',
-      description: 'Research and prototype cutting-edge AI/ML models for production-grade systems.',
-      requiredSkills: ['PyTorch', 'TensorFlow', 'Python', 'Linear Algebra'],
-      salary: '₹20-25 LPA',
-      location: 'Remote',
-      jobType: 'Full-time',
-    },
-    rounds: [
-      { num: 1, name: 'Aptitude Screen',   type: 'Aptitude MCQ',     questions: 15, duration: 25, difficulty: { easy: 50, medium: 40, hard: 10 } },
-      { num: 2, name: 'ML Coding Round',   type: 'Coding Round',      questions: 2,  duration: 120,difficulty: { easy: 0,  medium: 70, hard: 30 } },
-      { num: 3, name: 'System Design',     type: 'System Design',     questions: 1,  duration: 60, difficulty: { easy: 0,  medium: 100,hard: 0  } },
-      { num: 4, name: 'Founder Challenge', type: 'Founder Challenge',  questions: 1,  duration: 45, difficulty: { easy: 0,  medium: 100,hard: 0  } },
-      { num: 5, name: 'Culture Fit',       type: 'Culture Fit',        questions: 5,  duration: 15, difficulty: { easy: 100,medium: 0,  hard: 0  } },
-    ],
+    company: { name: 'GammaWorks AI',   email: 'jobs@gammaworks.ai',      industry: 'AI/ML',         location: 'Hyderabad, India' },
+    jobTitle: 'Software Engineer',
+    description: 'Solve algorithmic problems and build efficient systems.',
+    skills: ['Python', 'Data Structures', 'Algorithms'],
+    salary: '₹15-20 LPA', location: 'Remote', jobType: 'Full-time',
+    round: { num: 1, name: 'Coding Challenge', type: 'Coding Round',    questions: 2,  duration: 90,  difficulty: { easy: 0, medium: 70, hard: 30 } },
+  },
+  {
+    company: { name: 'DeltaHR',         email: 'talent@deltahr.co',       industry: 'HRTech',        location: 'Mumbai, India' },
+    jobTitle: 'People Operations Lead',
+    description: 'Lead culture-first hiring and onboarding at DeltaHR.',
+    skills: ['Communication', 'Empathy', 'HR Policy'],
+    salary: '₹8-12 LPA', location: 'Mumbai', jobType: 'Full-time',
+    round: { num: 1, name: 'Culture Fit',      type: 'Culture Fit',     questions: 8,  duration: 20,  difficulty: { easy: 100, medium: 0, hard: 0 } },
+  },
+  {
+    company: { name: 'EpsilonSystems',  email: 'dev@epsilonsys.com',      industry: 'DevOps',        location: 'Pune, India' },
+    jobTitle: 'DevOps Engineer',
+    description: 'Manage CI/CD pipelines and cloud infrastructure.',
+    skills: ['Docker', 'Kubernetes', 'AWS', 'Terraform'],
+    salary: '₹14-18 LPA', location: 'Pune', jobType: 'Full-time',
+    round: { num: 1, name: 'DevOps Assessment', type: 'DevOps',         questions: 3,  duration: 60,  difficulty: { easy: 20, medium: 60, hard: 20 } },
+  },
+  {
+    company: { name: 'ZetaDesign',      email: 'studio@zetadesign.io',    industry: 'Design',        location: 'Chennai, India' },
+    jobTitle: 'Product Designer',
+    description: 'Create intuitive user experiences and design systems.',
+    skills: ['Figma', 'User Research', 'Prototyping'],
+    salary: '₹10-15 LPA', location: 'Chennai', jobType: 'Full-time',
+    round: { num: 1, name: 'Design Challenge', type: 'UI/UX Design',    questions: 1,  duration: 90,  difficulty: { easy: 0, medium: 100, hard: 0 } },
+  },
+  {
+    company: { name: 'EtaFoundry',      email: 'founders@etafoundry.com', industry: 'Startup',       location: 'Bangalore, India' },
+    jobTitle: 'Founding Engineer',
+    description: 'Join as an early engineer and shape the product roadmap.',
+    skills: ['Entrepreneurship', 'Full-Stack', 'Leadership'],
+    salary: '₹20-30 LPA + Equity', location: 'Remote', jobType: 'Full-time',
+    round: { num: 1, name: 'Founder Challenge', type: 'Founder Challenge', questions: 1, duration: 45, difficulty: { easy: 0, medium: 100, hard: 0 } },
+  },
+  {
+    company: { name: 'ThetaCloud',      email: 'infra@thetacloud.in',     industry: 'Cloud',         location: 'Delhi, India' },
+    jobTitle: 'System Architect',
+    description: 'Design distributed systems at scale.',
+    skills: ['System Design', 'Microservices', 'AWS'],
+    salary: '₹25-35 LPA', location: 'Remote', jobType: 'Full-time',
+    round: { num: 1, name: 'System Design Round', type: 'System Design', questions: 1, duration: 60, difficulty: { easy: 0, medium: 100, hard: 0 } },
+  },
+  {
+    company: { name: 'IotaSecure',      email: 'sec@iotasecure.io',       industry: 'Cybersecurity', location: 'Hyderabad, India' },
+    jobTitle: 'Security Engineer',
+    description: 'Identify vulnerabilities and build secure systems.',
+    skills: ['Penetration Testing', 'OWASP', 'Linux'],
+    salary: '₹16-22 LPA', location: 'Hyderabad', jobType: 'Full-time',
+    round: { num: 1, name: 'Security CTF', type: 'Cybersecurity',       questions: 3,  duration: 75,  difficulty: { easy: 10, medium: 60, hard: 30 } },
+  },
+  {
+    company: { name: 'KappaPM',         email: 'growth@kappapm.com',      industry: 'Product',       location: 'Mumbai, India' },
+    jobTitle: 'Product Manager',
+    description: 'Drive product strategy and roadmap for a SaaS platform.',
+    skills: ['Product Strategy', 'Agile', 'Analytics'],
+    salary: '₹18-24 LPA', location: 'Mumbai', jobType: 'Full-time',
+    round: { num: 1, name: 'Product Thinking', type: 'Product Thinking', questions: 1, duration: 60, difficulty: { easy: 0, medium: 100, hard: 0 } },
+  },
+  {
+    company: { name: 'LambdaQA',        email: 'qa@lambdatest.co',        industry: 'QA/Testing',    location: 'Pune, India' },
+    jobTitle: 'QA Engineer',
+    description: 'Build automated test suites and ensure product quality.',
+    skills: ['Selenium', 'Jest', 'Cypress', 'API Testing'],
+    salary: '₹8-12 LPA', location: 'Pune', jobType: 'Full-time',
+    round: { num: 1, name: 'QA Testing Round', type: 'QA Testing',      questions: 3,  duration: 45,  difficulty: { easy: 20, medium: 60, hard: 20 } },
+  },
+  {
+    company: { name: 'MuStartups',      email: 'hr@mustartups.io',        industry: 'HR/People',     location: 'Bangalore, India' },
+    jobTitle: 'Business Development Lead',
+    description: 'Drive partnerships and growth for an early-stage startup.',
+    skills: ['Communication', 'Sales', 'Negotiation'],
+    salary: '₹10-15 LPA', location: 'Remote', jobType: 'Full-time',
+    round: { num: 1, name: 'Behavioral Interview', type: 'Behavioral',   questions: 6,  duration: 25,  difficulty: { easy: 100, medium: 0, hard: 0 } },
   },
 ];
 
-// ─── Main seed function (exported for API use + direct CLI use) ───────────────
 async function runSeed() {
-  // If called from CLI, connect to DB. If called from running server, skip.
   if (mongoose.connection.readyState !== 1) {
     require('dotenv').config();
     await mongoose.connect(process.env.MONGO_URI);
     console.log('✅ MongoDB connected');
   }
 
-  // ── 1. Find the demo candidate ────────────────────────────────────────────
   const profEmail = 'thiru.demo@hireverse.com';
   const professional = await User.findOne({ email: profEmail });
   if (!professional) {
-    throw new Error(`Candidate not found: ${profEmail}. Please ensure this user is registered first.`);
+    throw new Error(`Candidate not found: ${profEmail}. Please register this user first.`);
   }
-  console.log(`✅ Found candidate: ${professional.name}`);
+  console.log(`✅ Candidate: ${professional.name}`);
 
   const hashedPassword = await bcrypt.hash('Demo@123', 10);
   const results = [];
 
   for (const def of SEED_DATA) {
-    // ── 2. Upsert company ──────────────────────────────────────────────────
+    // ── Upsert company ────────────────────────────────────────────
     let company = await User.findOne({ email: def.company.email });
     if (!company) {
       company = await User.create({
-        name:           def.company.name,
-        email:          def.company.email,
-        password:       hashedPassword,
-        accountType:    'company',
+        name:            def.company.name,
+        email:           def.company.email,
+        password:        hashedPassword,
+        accountType:     'company',
         verificationStatus: 'verified',
         companyDetails: {
           website:      `https://${def.company.email.split('@')[1]}`,
           industry:     def.company.industry,
-          size:         '51-200',
+          size:         '11-50',
           location:     def.company.location,
-          description:  `${def.company.name} — building products that matter.`,
-          startupStage: 'Series A',
+          description:  `${def.company.name} — building bold products for the future.`,
+          startupStage: 'Seed',
         },
       });
-      console.log(`✅ Created company: ${def.company.name}`);
-    } else {
-      console.log(`ℹ️  Company exists: ${def.company.name}`);
+      console.log(`  ✅ Company: ${def.company.name}`);
     }
 
-    // ── 3. Upsert job ─────────────────────────────────────────────────────
-    let job = await Job.findOne({ companyId: company._id, jobTitle: def.job.jobTitle });
+    // ── Upsert job (single round only) ────────────────────────────
+    let job = await Job.findOne({ companyId: company._id, jobTitle: def.jobTitle });
     if (!job) {
       job = await Job.create({
         companyId:     company._id,
-        ...def.job,
+        jobTitle:      def.jobTitle,
+        description:   def.description,
+        requiredSkills: def.skills,
+        salary:        def.salary,
+        location:      def.location,
+        jobType:       def.jobType,
         isActive:      true,
-        rounds: def.rounds.map(r => ({
-          roundNumber: r.num,
-          name:        r.name,
+        rounds: [{
+          roundNumber:   def.round.num,
+          name:          def.round.name,
           hasAssessment: true,
           assessmentDetails: {
-            type:         r.type,
-            numQuestions: r.questions,
-            difficulty:   r.difficulty,
-            duration:     r.duration,
+            type:         def.round.type,
+            numQuestions: def.round.questions,
+            difficulty:   def.round.difficulty,
+            duration:     def.round.duration,
           },
-        })),
+        }],
       });
-      console.log(`✅ Created job: ${def.job.jobTitle} @ ${def.company.name}`);
-    } else {
-      console.log(`ℹ️  Job exists: ${def.job.jobTitle} @ ${def.company.name}`);
+      console.log(`  ✅ Job: ${def.jobTitle} @ ${def.company.name} (${def.round.type})`);
     }
 
-    // ── 4. Delete old broken applications → recreate fresh ───────────────
-    const deleted = await Application.deleteMany({ jobId: job._id, applicantId: professional._id });
-    if (deleted.deletedCount > 0) {
-      console.log(`🗑️  Removed ${deleted.deletedCount} old application(s) for ${def.job.jobTitle}`);
-    }
-
-    const roundSchedules = def.rounds.map(r => ({
-      roundNumber:  r.num,
-      roundName:    r.name,
-      roundType:    'assessment',
-      status:       'Scheduled',
-      assessmentConfig: {
-        assessmentType: ROUND_TYPES[r.type] || 'Aptitude MCQ',
-        numQuestions:   r.questions,
-        difficulty:     r.difficulty,
-        duration:       r.duration,
-        // No availableFrom / availableUntil → window is always open (for demo testing)
-      },
-    }));
+    // ── Delete old → create fresh application (round 1 active) ───
+    await Application.deleteMany({ jobId: job._id, applicantId: professional._id });
 
     const app = await Application.create({
       jobId:              job._id,
       applicantId:        professional._id,
       status:             'in_round',
-      currentRound:       1,           // Round 1 is the active round → canStart = true
+      currentRound:       1,            // Round 1 = active → Start Test button shows
       currentRoundStatus: 'Scheduled',
-      roundSchedules,
+      roundSchedules: [{
+        roundNumber:  1,
+        roundName:    def.round.name,
+        roundType:    'assessment',
+        status:       'Scheduled',
+        assessmentConfig: {
+          assessmentType: def.round.type,
+          numQuestions:   def.round.questions,
+          difficulty:     def.round.difficulty,
+          duration:       def.round.duration,
+          // No availableFrom/Until → always open for testing
+        },
+      }],
     });
 
-    console.log(`✅ Application created for ${def.job.jobTitle} — ${roundSchedules.length} rounds, currentRound=1`);
+    console.log(`  ✅ Application: ${def.round.type} round active`);
     results.push({
-      company:       def.company.name,
-      job:           def.job.jobTitle,
-      applicationId: app._id.toString(),
-      rounds:        roundSchedules.length,
+      company:  def.company.name,
+      job:      def.jobTitle,
+      round:    def.round.type,
+      duration: `${def.round.duration} min`,
     });
   }
 
@@ -213,11 +212,10 @@ async function runSeed() {
   return results;
 }
 
-// ── Run directly via CLI ──────────────────────────────────────────────────────
 if (require.main === module) {
   runSeed()
-    .then(results => { console.table(results); process.exit(0); })
-    .catch(err   => { console.error('❌ Seed error:', err.message); process.exit(1); });
+    .then(r => { console.table(r); process.exit(0); })
+    .catch(e => { console.error('❌', e.message); process.exit(1); });
 }
 
 module.exports = { runSeed };
