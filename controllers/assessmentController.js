@@ -14,7 +14,13 @@ const getOrGenerateAssessment = async (req, res) => {
     // Return existing generated assessment if already created
     let assessment = await CandidateAssessment.findOne({ candidateId, jobId, roundNumber }).populate('questions');
     if (assessment) {
-      return res.status(200).json(assessment);
+      const asmObj = assessment.toObject();
+      const application = await Application.findOne({ jobId, applicantId: candidateId });
+      const rs = application?.roundSchedules?.find(r => r.roundNumber === parseInt(roundNumber));
+      asmObj.roundType = rs?.assessmentConfig?.assessmentType || rs?.roundName || 'aptitude';
+      const job = await Job.findById(jobId);
+      if (job) asmObj.jobTitle = job.jobTitle;
+      return res.status(200).json(asmObj);
     }
 
     // Get candidate's application → find the roundSchedule entry
@@ -112,7 +118,11 @@ const getOrGenerateAssessment = async (req, res) => {
     });
 
     assessment = await assessment.populate('questions');
-    res.status(201).json(assessment);
+    const asmObj = assessment.toObject();
+    asmObj.roundType = assessmentType;
+    const job = await Job.findById(jobId);
+    if (job) asmObj.jobTitle = job.jobTitle;
+    res.status(201).json(asmObj);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error generating assessment' });
@@ -284,7 +294,19 @@ const getAssessmentById = async (req, res) => {
     const candidateId = req.user.id;
     const assessment = await CandidateAssessment.findOne({ _id: assessmentId, candidateId }).populate('questions');
     if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
-    res.status(200).json(assessment);
+
+    const asmObj = assessment.toObject();
+    const application = await Application.findOne({ jobId: assessment.jobId, applicantId: candidateId });
+    if (application) {
+      const rs = application.roundSchedules?.find(r => r.roundNumber === assessment.roundNumber);
+      if (rs) {
+        asmObj.roundType = rs.assessmentConfig?.assessmentType || rs.roundName || 'aptitude';
+      }
+    }
+    const job = await Job.findById(assessment.jobId);
+    if (job) asmObj.jobTitle = job.jobTitle;
+
+    res.status(200).json(asmObj);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error fetching assessment' });
