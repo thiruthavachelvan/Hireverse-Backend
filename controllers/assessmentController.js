@@ -92,10 +92,11 @@ const getOrGenerateAssessment = async (req, res) => {
     let category = categoryMap[assessmentType] || 'Aptitude';
 
 
-    const totalQ      = numQuestions;
-    const easyCount   = Math.floor(((difficulty.easy   ?? 40) / 100) * totalQ);
-    const hardCount   = Math.floor(((difficulty.hard   ?? 20) / 100) * totalQ);
-    const mediumCount = totalQ - easyCount - hardCount;
+    const diffObj    = difficulty || {};
+    const totalQ      = numQuestions || 10;
+    const easyCount   = Math.floor(((diffObj.easy   ?? 40) / 100) * totalQ);
+    const hardCount   = Math.floor(((diffObj.hard   ?? 20) / 100) * totalQ);
+    const mediumCount = Math.max(0, totalQ - easyCount - hardCount);
 
     const [easyQs, mediumQs, hardQs] = await Promise.all([
       QuestionBank.aggregate([{ $match: { category, difficulty: 'Easy'   } }, { $sample: { size: easyCount   } }]),
@@ -107,10 +108,16 @@ const getOrGenerateAssessment = async (req, res) => {
       .map(q => q._id)
       .sort(() => Math.random() - 0.5);
 
+    // Fallback if QuestionBank has no questions for specific category
+    if (finalQuestions.length === 0) {
+      const fallbackQs = await QuestionBank.aggregate([{ $sample: { size: totalQ } }]);
+      finalQuestions = fallbackQs.map(q => q._id);
+    }
+
     assessment = await CandidateAssessment.create({
       candidateId,
       jobId,
-      roundNumber,
+      roundNumber: parseInt(roundNumber),
       questions: finalQuestions,
       duration,
       startTime: Date.now(),
@@ -124,8 +131,8 @@ const getOrGenerateAssessment = async (req, res) => {
     if (job) asmObj.jobTitle = job.jobTitle;
     res.status(201).json(asmObj);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error generating assessment' });
+    console.error('getOrGenerateAssessment error:', error);
+    res.status(500).json({ message: error.message || 'Server error generating assessment' });
   }
 };
 
@@ -308,8 +315,8 @@ const getAssessmentById = async (req, res) => {
 
     res.status(200).json(asmObj);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error fetching assessment' });
+    console.error('getAssessmentById error:', error);
+    res.status(500).json({ message: error.message || 'Server error fetching assessment' });
   }
 };
 
