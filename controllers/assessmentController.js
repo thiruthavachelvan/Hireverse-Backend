@@ -139,23 +139,30 @@ const getOrGenerateAssessment = async (req, res) => {
 const submitAssessment = async (req, res) => {
   try {
     const { assessmentId } = req.params;
-    const { answers, proctorData } = req.body; // answers is a map of questionId -> selectedAnswer
+    const { answers: rawAnswers, candidateResponse, proctorData: rawProctorData, violations: rawViolations } = req.body;
     const candidateId = req.user.id;
+
+    const answers = rawAnswers || candidateResponse || {};
+    const pData   = rawProctorData || {};
+    const violationList = rawViolations || pData.violations || [];
 
     let assessment = await CandidateAssessment.findOne({ _id: assessmentId, candidateId }).populate('questions');
     if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
     if (assessment.status === 'Completed') return res.status(400).json({ message: 'Assessment already completed' });
 
     // Calculate time taken
-    const timeTakenMs = Date.now() - new Date(assessment.startTime).getTime();
+    const startTimeMs = assessment.startTime ? new Date(assessment.startTime).getTime() : Date.now();
+    const timeTakenMs = Math.max(0, Date.now() - startTimeMs);
     const timeTakenMins = Math.round(timeTakenMs / 60000);
 
     // Evaluate
     let correctAnswers = 0;
     let wrongAnswers = 0;
-    const totalQuestions = assessment.questions.length;
+    const questionsList = assessment.questions || [];
+    const totalQuestions = Math.max(1, questionsList.length);
     
-    assessment.questions.forEach(q => {
+    questionsList.forEach(q => {
+      if (!q) return;
       const candidateAns = answers[q._id];
       if (q.type === 'MCQ') {
         if (candidateAns === q.correctAnswer) {
@@ -164,8 +171,7 @@ const submitAssessment = async (req, res) => {
           wrongAnswers += 1;
         }
       } else {
-        // Coding auto-evaluation simplified for now: 1 point if answered at all (usually requires code execution)
-        if (candidateAns && candidateAns.trim().length > 10) {
+        if (candidateAns && String(candidateAns).trim().length > 5) {
           correctAnswers += 1;
         } else {
           wrongAnswers += 1;
@@ -174,32 +180,33 @@ const submitAssessment = async (req, res) => {
     });
 
     const percentage = Math.round((correctAnswers / totalQuestions) * 100);
-    const passed = percentage >= 50; // simple threshold
+    const passed = percentage >= 50;
 
-    // Calculate proctoring trust score in backend
+    // Calculate proctoring trust score
     let trustScore = 100;
-    trustScore -= (proctorData.tabSwitchCount || 0) * 10;
-    trustScore -= (proctorData.fullscreenExitCount || 0) * 10;
-    trustScore -= (proctorData.copyPasteAttempts || 0) * 5;
-    trustScore -= (proctorData.rightClickAttempts || 0) * 5;
+    trustScore -= (pData.tabSwitchCount || 0) * 10;
+    trustScore -= (pData.fullscreenExitCount || 0) * 10;
+    trustScore -= (pData.copyPasteAttempts || 0) * 5;
+    trustScore -= (pData.rightClickAttempts || 0) * 5;
+    trustScore -= (violationList.length) * 5;
     if (trustScore < 0) trustScore = 0;
 
     // 1. Create Proctor Report
     const proctorReport = await ProctorReport.create({
       candidateId,
       assessmentId,
-      tabSwitchCount: proctorData.tabSwitchCount || 0,
-      fullscreenExitCount: proctorData.fullscreenExitCount || 0,
-      copyPasteAttempts: proctorData.copyPasteAttempts || 0,
-      rightClickAttempts: proctorData.rightClickAttempts || 0,
-      totalTimeOutsideSecureMode: proctorData.totalTimeOutsideSecureMode || 0,
-      violations: proctorData.violations || [],
+      tabSwitchCount: pData.tabSwitchCount || 0,
+      fullscreenExitCount: pData.fullscreenExitCount || 0,
+      copyPasteAttempts: pData.copyPasteAttempts || 0,
+      rightClickAttempts: pData.rightClickAttempts || 0,
+      totalTimeOutsideSecureMode: pData.totalTimeOutsideSecureMode || 0,
+      violations: violationList,
       trustScore
     });
 
     // 2. Query Job to get companyId
     const job = await Job.findById(assessment.jobId);
-    const companyId = job?.companyId || candidateId; // Fallback if job not found
+    const companyId = job?.companyId || candidateId;
 
     // 3. Create Assessment Attempt
     const attempt = await AssessmentAttempt.create({
@@ -223,7 +230,7 @@ const submitAssessment = async (req, res) => {
     proctorReport.attemptId = attempt._id;
     await proctorReport.save();
 
-    // 4. Create Result (backward compatibility)
+    // 4. Create Result
     await AssessmentResult.create({
       candidateId,
       assessmentId,
@@ -253,11 +260,10 @@ const submitAssessment = async (req, res) => {
     assessment.status = 'Completed';
     await assessment.save();
 
-    // Response does not return trust score or violations to the candidate
     res.status(200).json({ message: 'Submitted successfully' });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error submitting assessment' });
+    console.error('submitAssessment error:', error);
+    res.status(500).json({ message: error.message || 'Server error submitting assessment' });
   }
 };
 
