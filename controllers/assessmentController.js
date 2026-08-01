@@ -59,10 +59,32 @@ const getOrGenerateAssessment = async (req, res) => {
       }
     }
 
-    // Map type → QuestionBank category
-    let category = 'Aptitude';
-    if (assessmentType === 'Technical MCQ') category = 'Technical';
-    else if (assessmentType === 'Coding Round') category = 'Coding';
+    // Map assessmentType → QuestionBank category
+    const categoryMap = {
+      'Aptitude MCQ':     'Aptitude',
+      'Technical MCQ':    'Technical',
+      'Coding Round':     'Coding',
+      'Debugging':        'Debugging',
+      'Frontend':         'Frontend',
+      'Backend':          'Backend',
+      'Database Design':  'Database Design',
+      'System Design':    'System Design',
+      'Product Thinking': 'Product Thinking',
+      'Founder Challenge':'Founder Challenge',
+      'UI/UX Design':     'UI/UX Design',
+      'QA Testing':       'QA Testing',
+      'AI/ML':            'AI/ML',
+      'Cybersecurity':    'Cybersecurity',
+      'DevOps':           'DevOps',
+      'Culture Fit':      'Culture Fit',
+      'Behavioral':       'Behavioral',
+      'HR Interview':     'Culture Fit',   // HR maps to Culture Fit bucket
+      'Resume Screening': 'Aptitude',       // Resume Screening → Aptitude fallback
+      'Assignment':       'Coding',         // Assignment → Coding bucket
+      'Case Study':       'Product Thinking', // Case Study → Product Thinking
+    };
+    let category = categoryMap[assessmentType] || 'Aptitude';
+
 
     const totalQ      = numQuestions;
     const easyCount   = Math.floor(((difficulty.easy   ?? 40) / 100) * totalQ);

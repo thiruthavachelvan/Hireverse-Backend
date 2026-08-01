@@ -1,138 +1,203 @@
 // seedTestData.js
-// Run with: node server/seedTestData.js
-// This script creates three sample companies, each posting a job with distinct assessment rounds, and assigns the current professional user (thiruthavachelvan) to all of them for testing.
+// Run with: node seedTestData.js   (from the server/ directory)
+// OR triggered via POST /api/admin/seed-test-data (admin token required)
 
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-dotenv.config({ path: '../.env' });
+dotenv.config();
 
 const User = require('./models/User');
 const Job = require('./models/Job');
 const Application = require('./models/Application');
 
-(async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost/hireverse', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    console.log('MongoDB connected');
+// ─── Map round names → valid assessmentType enum values ─────────────────────
+// Application.assessmentConfig.assessmentType must be one of these values.
+// These also map to AssessmentEngine workspace components.
+const VALID_TYPES = {
+  'Aptitude MCQ':     'Aptitude MCQ',
+  'Technical MCQ':    'Technical MCQ',
+  'Coding Round':     'Coding Round',
+  'Debugging':        'Debugging',
+  'Frontend':         'Frontend',
+  'Backend':          'Backend',
+  'Database Design':  'Database Design',
+  'System Design':    'System Design',
+  'Product Thinking': 'Product Thinking',
+  'Founder Challenge':'Founder Challenge',
+  'UI/UX Design':     'UI/UX Design',
+  'QA Testing':       'QA Testing',
+  'AI/ML':            'AI/ML',
+  'Cybersecurity':    'Cybersecurity',
+  'DevOps':           'DevOps',
+  'Culture Fit':      'Culture Fit',
+  'Behavioral':       'Behavioral',
+  'HR Interview':     'HR Interview',
+  'Resume Screening': 'Resume Screening',
+  'Assignment':       'Assignment',
+  'Case Study':       'Case Study',
+};
 
-    // ---------- 1️⃣ Ensure professional user exists ----------
-    const profEmail = 'thiru.demo@hireverse.com';
-    let professional = await User.findOne({ email: profEmail });
-    if (!professional) {
-      professional = await User.create({
-        name: 'Thiruthavachelvan',
-        email: profEmail,
-        password: 'Demo@123', // In production this would be hashed via registration flow
-        accountType: 'professional',
-        employmentStatus: 'unemployed',
-      });
-      console.log('Created professional account');
-    }
+const jobsData = [
+  {
+    company: { name: 'AlphaTech', email: 'contact@alphatech.io', industry: 'SaaS', location: 'Bangalore' },
+    jobTitle: 'Full-Stack Engineer',
+    description: 'Build and scale modern full-stack web applications using React and Node.js.',
+    requiredSkills: ['React', 'Node.js', 'MongoDB', 'REST APIs'],
+    salary: '₹12-15 LPA',
+    location: 'Remote',
+    jobType: 'Full-time',
+    rounds: [
+      { roundNumber: 1, name: 'Aptitude Test',   type: 'Aptitude MCQ',   questions: 20, duration: 30, difficulty: { easy: 60, medium: 30, hard: 10 } },
+      { roundNumber: 2, name: 'Coding Challenge', type: 'Coding Round',   questions: 3,  duration: 90, difficulty: { easy: 0,  medium: 70, hard: 30 } },
+      { roundNumber: 3, name: 'Culture Fit',      type: 'Culture Fit',    questions: 5,  duration: 15, difficulty: { easy: 100,medium: 0,  hard: 0  } },
+    ],
+  },
+  {
+    company: { name: 'BetaLabs', email: 'hr@betalabs.co', industry: 'FinTech', location: 'Delhi' },
+    jobTitle: 'Data Analyst',
+    description: 'Analyse data pipelines and build dashboards to drive product decisions.',
+    requiredSkills: ['SQL', 'Python', 'Tableau', 'Statistics'],
+    salary: '₹8-10 LPA',
+    location: 'Bengaluru',
+    jobType: 'Full-time',
+    rounds: [
+      { roundNumber: 1, name: 'Technical MCQ',   type: 'Technical MCQ',   questions: 25, duration: 35, difficulty: { easy: 50, medium: 40, hard: 10 } },
+      { roundNumber: 2, name: 'Debugging Round', type: 'Debugging',        questions: 3,  duration: 45, difficulty: { easy: 30, medium: 50, hard: 20 } },
+      { roundNumber: 3, name: 'Behavioral',      type: 'Behavioral',       questions: 5,  duration: 20, difficulty: { easy: 100,medium: 0,  hard: 0  } },
+    ],
+  },
+  {
+    company: { name: 'GammaWorks', email: 'jobs@gammaworks.com', industry: 'AI/ML', location: 'Hyderabad' },
+    jobTitle: 'AI Research Engineer',
+    description: 'Research and prototype cutting-edge AI/ML models for production-grade systems.',
+    requiredSkills: ['PyTorch', 'TensorFlow', 'Python', 'Linear Algebra'],
+    salary: '₹20-25 LPA',
+    location: 'Remote',
+    jobType: 'Full-time',
+    rounds: [
+      { roundNumber: 1, name: 'Aptitude Screen',   type: 'Aptitude MCQ',     questions: 15, duration: 25, difficulty: { easy: 50, medium: 40, hard: 10 } },
+      { roundNumber: 2, name: 'ML Coding Round',   type: 'Coding Round',      questions: 2,  duration: 120,difficulty: { easy: 0,  medium: 70, hard: 30 } },
+      { roundNumber: 3, name: 'System Design',     type: 'System Design',     questions: 1,  duration: 60, difficulty: { easy: 0,  medium: 100,hard: 0  } },
+      { roundNumber: 4, name: 'Founder Challenge', type: 'Founder Challenge',  questions: 1,  duration: 45, difficulty: { easy: 0,  medium: 100,hard: 0  } },
+      { roundNumber: 5, name: 'Cultural Fit',      type: 'Culture Fit',        questions: 5,  duration: 15, difficulty: { easy: 100,medium: 0,  hard: 0  } },
+    ],
+  },
+];
 
-    // ---------- 2️⃣ Create sample companies ----------
-    const companiesData = [
-      { name: 'AlphaTech', email: 'contact@alphatech.io', password: 'Demo@123', accountType: 'company', companyDetails: { website: 'https://alphatech.io', industry: 'SaaS', size: '51-200', location: 'Bangalore', description: 'Innovative SaaS platform.' } },
-      { name: 'BetaLabs', email: 'hr@betalabs.co', password: 'Demo@123', accountType: 'company', companyDetails: { website: 'https://betalabs.co', industry: 'FinTech', size: '201-500', location: 'Delhi', description: 'FinTech solutions for SMEs.' } },
-      { name: 'GammaWorks', email: 'jobs@gammaworks.com', password: 'Demo@123', accountType: 'company', companyDetails: { website: 'https://gammaworks.com', industry: 'AI/ML', size: '51-200', location: 'Hyderabad', description: 'AI-driven product suite.' } },
-    ];
-
-    const companyIds = [];
-    for (const comp of companiesData) {
-      let company = await User.findOne({ email: comp.email });
-      if (!company) {
-        company = await User.create(comp);
-        console.log(`Created company ${comp.name}`);
-      }
-      companyIds.push(company._id);
-    }
-
-    // ---------- 3️⃣ Create jobs with distinct round mixes ----------
-    const jobsData = [
-      {
-        companyId: companyIds[0],
-        jobTitle: 'Full‑Stack Engineer',
-        description: 'Build and scale modern web applications.',
-        requiredSkills: ['React', 'Node.js', 'MongoDB'],
-        salary: '₹12‑15LPA',
-        location: 'Remote',
-        jobType: 'Full-time',
-        rounds: [
-          { roundNumber: 1, name: 'Aptitude Test', hasAssessment: true, assessmentDetails: { type: 'Aptitude MCQ', numQuestions: 20, difficulty: { easy: 60, medium: 30, hard: 10 }, duration: 30 } },
-          { roundNumber: 2, name: 'Coding Challenge', hasAssessment: true, assessmentDetails: { type: 'Coding Round', numQuestions: 3, difficulty: { easy: 0, medium: 80, hard: 20 }, duration: 90 } },
-          { roundNumber: 3, name: 'Culture Fit', hasAssessment: true, assessmentDetails: { type: 'Cultural Fit', numQuestions: 5, difficulty: { easy: 100, medium: 0, hard: 0 }, duration: 15 } },
-        ],
-      },
-      {
-        companyId: companyIds[1],
-        jobTitle: 'Data Analyst',
-        description: 'Analyse data to drive product decisions.',
-        requiredSkills: ['SQL', 'Python', 'Tableau'],
-        salary: '₹8‑10LPA',
-        location: 'Bengaluru',
-        jobType: 'Full-time',
-        rounds: [
-          { roundNumber: 1, name: 'Technical MCQ', hasAssessment: true, assessmentDetails: { type: 'Technical MCQ', numQuestions: 25, difficulty: { easy: 50, medium: 40, hard: 10 }, duration: 35 } },
-          { roundNumber: 2, name: 'Case Study', hasAssessment: true, assessmentDetails: { type: 'Case Study', numQuestions: 1, difficulty: { easy: 0, medium: 100, hard: 0 }, duration: 60 } },
-        ],
-      },
-      {
-        companyId: companyIds[2],
-        jobTitle: 'AI Research Engineer',
-        description: 'Research and prototype AI models.',
-        requiredSkills: ['PyTorch', 'TensorFlow', 'Python'],
-        salary: '₹20‑25LPA',
-        location: 'Remote',
-        jobType: 'Full-time',
-        rounds: [
-          { roundNumber: 1, name: 'Coding/ML Challenge', hasAssessment: true, assessmentDetails: { type: 'Coding Round', numQuestions: 2, difficulty: { easy: 0, medium: 70, hard: 30 }, duration: 120 } },
-          { roundNumber: 2, name: 'Founder Challenge', hasAssessment: true, assessmentDetails: { type: 'Founder Challenge', numQuestions: 1, difficulty: { easy: 0, medium: 100, hard: 0 }, duration: 45 } },
-          { roundNumber: 3, name: 'Cultural Fit', hasAssessment: true, assessmentDetails: { type: 'Cultural Fit', numQuestions: 5, difficulty: { easy: 100, medium: 0, hard: 0 }, duration: 15 } },
-        ],
-      },
-    ];
-
-    const jobIds = [];
-    for (const jobInfo of jobsData) {
-      let job = await Job.findOne({ companyId: jobInfo.companyId, jobTitle: jobInfo.jobTitle });
-      if (!job) {
-        job = await Job.create(jobInfo);
-        console.log(`Created job: ${jobInfo.jobTitle}`);
-      }
-      jobIds.push(job._id);
-    }
-
-    // ---------- 4️⃣ Create applications for the professional ----------
-    for (const jobId of jobIds) {
-      const existingApp = await Application.findOne({ jobId, applicantId: professional._id });
-      if (!existingApp) {
-        const job = await Job.findById(jobId);
-        const roundSchedules = job.rounds.map(r => ({
-          roundNumber: r.roundNumber,
-          roundName: r.name,
-          roundType: 'assessment',
-          assessmentConfig: {
-            assessmentType: r.assessmentDetails.type,
-            numQuestions: r.assessmentDetails.numQuestions,
-            difficulty: r.assessmentDetails.difficulty,
-            duration: r.assessmentDetails.duration,
-          },
-        }));
-        await Application.create({
-          jobId,
-          applicantId: professional._id,
-          roundSchedules,
-        });
-        console.log(`Created application for job ${job.jobTitle}`);
-      }
-    }
-
-    console.log('All test data seeded successfully');
-    process.exit(0);
-  } catch (err) {
-    console.error('Seeding error:', err);
-    process.exit(1);
+async function runSeed(mongoUri) {
+  const uri = mongoUri || process.env.MONGO_URI;
+  let alreadyConnected = mongoose.connection.readyState === 1;
+  if (!alreadyConnected) {
+    await mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    console.log('✅ MongoDB connected');
   }
-})();
+
+  // ── 1. Find candidate ──────────────────────────────────────────
+  const profEmail = 'thiru.demo@hireverse.com';
+  const professional = await User.findOne({ email: profEmail });
+  if (!professional) {
+    throw new Error(`Candidate not found: ${profEmail}. Please ensure the user is registered first.`);
+  }
+  console.log(`✅ Found candidate: ${professional.name} (${professional._id})`);
+
+  const results = [];
+
+  for (const def of jobsData) {
+    // ── 2. Ensure company exists ─────────────────────────────────
+    let company = await User.findOne({ email: def.company.email });
+    if (!company) {
+      const bcrypt = require('bcryptjs');
+      const hashed = await bcrypt.hash('Demo@123', 10);
+      company = await User.create({
+        name: def.company.name,
+        email: def.company.email,
+        password: hashed,
+        accountType: 'company',
+        verificationStatus: 'verified',
+        companyDetails: {
+          website: `https://${def.company.email.split('@')[1]}`,
+          industry: def.company.industry,
+          size: '51-200',
+          location: def.company.location,
+          description: `${def.company.name} — building products that matter.`,
+          startupStage: 'Series A',
+        },
+      });
+      console.log(`✅ Created company: ${def.company.name}`);
+    } else {
+      console.log(`ℹ️  Company exists: ${def.company.name}`);
+    }
+
+    // ── 3. Create or update job ──────────────────────────────────
+    let job = await Job.findOne({ companyId: company._id, jobTitle: def.jobTitle });
+    const jobRounds = def.rounds.map(r => ({
+      roundNumber: r.roundNumber,
+      name: r.name,
+      hasAssessment: true,
+      assessmentDetails: {
+        type: r.type,
+        numQuestions: r.questions,
+        difficulty: r.difficulty,
+        duration: r.duration,
+      },
+    }));
+    if (!job) {
+      job = await Job.create({
+        companyId: company._id,
+        jobTitle: def.jobTitle,
+        description: def.description,
+        requiredSkills: def.requiredSkills,
+        salary: def.salary,
+        location: def.location,
+        jobType: def.jobType,
+        rounds: jobRounds,
+        isActive: true,
+      });
+      console.log(`✅ Created job: ${def.jobTitle} @ ${def.company.name}`);
+    } else {
+      console.log(`ℹ️  Job exists: ${def.jobTitle} @ ${def.company.name}`);
+    }
+
+    // ── 4. Delete old broken application, recreate fresh ─────────
+    await Application.deleteMany({ jobId: job._id, applicantId: professional._id });
+
+    const roundSchedules = def.rounds.map(r => ({
+      roundNumber: r.roundNumber,
+      roundName: r.name,
+      roundType: 'assessment',
+      status: 'Scheduled',
+      assessmentConfig: {
+        assessmentType: VALID_TYPES[r.type] || 'Aptitude MCQ',
+        numQuestions: r.questions,
+        difficulty: r.difficulty,
+        duration: r.duration,
+        // No availableFrom / availableUntil → window is always open (for testing)
+      },
+    }));
+
+    const app = await Application.create({
+      jobId: job._id,
+      applicantId: professional._id,
+      status: 'in_round',
+      currentRound: 1,          // ← Round 1 is the active round (so canStart = true)
+      currentRoundStatus: 'Scheduled',
+      roundSchedules,
+    });
+
+    console.log(`✅ Created application for ${def.jobTitle} — ${roundSchedules.length} rounds`);
+    results.push({ job: def.jobTitle, company: def.company.name, applicationId: app._id, rounds: roundSchedules.length });
+  }
+
+  console.log('\n🎉 Seed complete!');
+  console.table(results);
+  return results;
+}
+
+// ── Run directly ──────────────────────────────────────────────────────────────
+if (require.main === module) {
+  runSeed()
+    .then(() => process.exit(0))
+    .catch(err => { console.error('❌ Seed error:', err.message); process.exit(1); });
+}
+
+module.exports = { runSeed };

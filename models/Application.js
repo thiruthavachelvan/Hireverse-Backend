@@ -14,7 +14,17 @@ const roundScheduleSchema = new mongoose.Schema({
 
   // ── Only populated when roundType === 'assessment' ───────────────────────
   assessmentConfig: {
-    assessmentType: { type: String, enum: ['Aptitude MCQ', 'Technical MCQ', 'Coding Round'] },
+    assessmentType: {
+      type: String,
+      enum: [
+        'Aptitude MCQ', 'Technical MCQ', 'Coding Round',
+        'Debugging', 'Frontend', 'Backend', 'Database Design',
+        'System Design', 'Product Thinking', 'Founder Challenge',
+        'UI/UX Design', 'QA Testing', 'AI/ML', 'Cybersecurity',
+        'DevOps', 'Culture Fit', 'Behavioral', 'HR Interview',
+        'Resume Screening', 'Assignment', 'Case Study',
+      ],
+    },
     numQuestions:   { type: Number, default: 20 },
     difficulty: {
       easy:   { type: Number, default: 40 },
